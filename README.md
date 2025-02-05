@@ -1,7 +1,49 @@
-
-# Automatic OpenWRT builds for Banana Pi BPI-R4 (non PoE version)
+﻿# Automatic OpenWRT builds for Banana Pi BPI-R4 (non PoE version)
 
 [![LICENSE](https://img.shields.io/github/license/mashape/apistatus.svg?style=flat-square&label=LICENSE)](https://github.com/IncubusRK/openwrt-ax6s/blob/master/LICENSE)
 
 - [Getting Started BPI-R4](https://docs.banana-pi.org/en/BPI-R4/GettingStarted_BPI-R4)
-- [4PDA Guide](https://4pda.to/forum/index.php?showtopic=1093476&view=findpost&p=133806031)
+- [4PDA инструкция по прошивке](https://4pda.to/forum/index.php?showtopic=1093476&view=findpost&p=133806031)
+
+## Прошивка с нуля без подключения консоли по RS-232
+
+В данном устройстве eMMC и SD карта не могут работать одновременно поэтому установка прошивки производится в несколько этапов. Сначала прошивка копируется на SD карту, потом с SD карты в NAND и затем с NAND в eMMC.
+В дальнейшем обновление производится через Web-интерфейс с помощью файлов [openwrt-mediatek-filogic-bananapi_bpi-r4-squashfs-sysupgrade.itb](releases/latest/download/openwrt-mediatek-filogic-bananapi_bpi-r4-squashfs-sysupgrade.itb)
+
+1. Скачиваем [openwrt-mediatek-filogic-bananapi_bpi-r4-sdcard.img.gz](releases/latest/download/openwrt-mediatek-filogic-bananapi_bpi-r4-sdcard.img.gz). Важно размер распакованного образа должен быть меньше 128 Мб, иначе будет невозможна установка в NAND.
+2. Записываем на SD карту с помощью [Rufus](https://rufus.ie/) или [balenaEtcher](https://etcher.balena.io/)
+3. Переключатели загрузки SW3 выставляем в положение 1:1 (оба переключателя в нижнем положении) для загрузки с SD
+4. Вставляем SD и загружаем устройство
+5. После загрузки подключаемся по SSH. Адрес по умолчанию 192.168.1.1, логин - root, пароль отсутствует
+6. Вводим команды для перезагрузки и автоматического копирования прошивки с SD карты в NAND память во время старта
+
+    ```sh
+    fw_setenv bootcmd "env default bootcmd ; saveenv ; run ubi_init ; bootmenu 0"
+    reboot
+    ```
+
+7. Дожидаемся завершения копирования прошивки в NAND память и загрузки устройства. Можно убедиться что устройство загрузилось повторно подключившись через SSH. При этом ключ SSH может сброситься о чем будет предупреждать SSH клиент. Для консольного клиента можно использовать команду очистки сохраненного ранее ключа ```ssh-keygen -R 192.168.1.1```
+8. Выключаем устройство. Можно извлечь SD карту
+9. Переключатели загрузки SW3 выставляем в положение 0:1 (левый в верхнем положении, правый в нижнем) для загрузки с NAND
+10. Подключаемся по SSH и вводим команды
+
+    ```sh
+    fw_setenv bootcmd "env default bootcmd ; saveenv ; run emmc_init ; bootmenu 0"
+    reboot
+    ```
+
+    После чего устройство перезагрузиться и при загрузке автоматически будет выбрано копирование прошивки в eMMC
+11. Дождавшись загрузки выключаем устройство и меням положение переключателей SW3 на 1:0 (левый вниз, правый вверх) для загрузки с eMMC
+
+## Изменение размера системного раздела
+
+После загрузки устройства с eMMC можно изменить размер системного раздела, по умолчанию он занимает лишь часть места на eMMC.
+Для этого подключаемся по SSH и вводим команду: `cfdisk /dev/mmcblk0`. Далее выбираем необходимый раздел `/dev/mmcblk0p5` стрелками на клавиатуре и выбираем команду `Resize`.
+Указываем необходимый размер и после записываем изменения командой `Write`.
+Встречается рекомендация не занимать всё свободное пространство, поскольку это приведет к росту размера резервной копии раздела и часто такой объем не требуется.
+Также в качестве альтернативы в прошивку включена консольная утилита `parted`.
+
+Если изменение размера раздела записать не получается, то в таком случае необходимо загрузиться с NAND (переключив SW3 в положение 0:1) и запускать `cfdisk /dev/mmcblk0` оттуда. После чего вернуть переключатели SW3 обратно на загрузку с eMMC.
+
+Чтобы система "увидела" изменение размера раздела проще всего прошить через Web-интерфейс файл `openwrt-mediatek-filogic-bananapi_bpi-r4-squashfs-sysupgrade.itb`.
+Для этого нужно войти в Web-интерфейс и перейти в раздел System -> Backup / Flash Firmware
